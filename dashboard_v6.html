@@ -313,7 +313,7 @@ tbody td{padding:5px 9px;border-bottom:1px solid rgba(255,255,255,.04);}
   <!-- DISP LINE CHART -->
   <div class="gc" style="margin-bottom:12px;">
     <div class="gt">📉 Disponibilidad % por Línea y Mes — Comparativo</div>
-    <div class="gs">Cada línea = una línea de producción · Punto rojo = bajo 85%</div>
+    <div class="gs">Disponibilidad diaria por línea · Punto rojo = bajo 85% · Verde = sobre meta</div>
     <div class="cw h220"><canvas id="s2DispLine"></canvas></div>
   </div>
 
@@ -395,7 +395,7 @@ tbody td{padding:5px 9px;border-bottom:1px solid rgba(255,255,255,.04);}
 
   <div class="gc" style="margin-bottom:12px;">
     <div class="gt">📉 Disponibilidad % por Línea y Mes — Comparativo</div>
-    <div class="gs">Cada línea = una línea de producción · Punto rojo = bajo 85%</div>
+    <div class="gs">Disponibilidad diaria por línea · Punto rojo = bajo 85% · Verde = sobre meta</div>
     <div class="cw h220"><canvas id="s3DispLine"></canvas></div>
   </div>
 
@@ -683,37 +683,37 @@ function mkWF(id,labels,vals,colors){
 
 function mkDispLine(id,lines,pd,td){
   if(!document.getElementById(id))return;
-  const combos=LD.combos;
-  // Filter combos by current filter if applicable
-  const ds=lines.filter(l=>pd.some(r=>r.linea===l)).map((l,i)=>{
+  // Daily disp: compute per day from filtered td
+  const daySet=new Set();
+  td.forEach(r=>{if(r.fecha)daySet.add(r.fecha);});
+  const allDays=[...daySet].sort();
+  if(!allDays.length){dx(id);return;}
+  const dayLbls=allDays.map(d=>{const dt=new Date(d);return dt.getDate()+'/'+(dt.getMonth()+1);});
+  const activeLines=lines.filter(l=>pd.some(r=>r.linea===l));
+  const ds=activeLines.map((l,i)=>{
     const col=LINE_COLS[i%LINE_COLS.length];
-    const pts=combos.map(combo=>{
-      const [mm,yy]=combo.split('/');
-      const mes=parseInt(mm),año=parseInt(yy);
-      // use filtered data
-      const teoSub=td.filter(r=>r.linea===l&&r.año===año&&r.mes===mes);
-      const teo=teoSub.reduce((a,r)=>a+r.minutos,0);
-      const efec=teoSub.reduce((a,r)=>a+(r.efec_min||0),0);
+    const pts=allDays.map(fecha=>{
+      const sub=td.filter(r=>r.linea===l&&r.fecha===fecha);
+      const teo=sub.reduce((a,r)=>a+r.minutos,0);
+      const efec=sub.reduce((a,r)=>a+(r.efec_min||0),0);
       return teo>0?+(efec/teo*100).toFixed(1):null;
     });
-    return{
-      label:LMAP[l]||l,data:pts,borderColor:col,
-      backgroundColor:col.replace(')',',0.08)').replace('rgb','rgba'),
-      fill:false,tension:0.3,pointRadius:4,spanGaps:true,
+    if(!pts.some(v=>v!=null))return null;
+    return{label:LMAP[l]||l,data:pts,borderColor:col,backgroundColor:'transparent',
+      fill:false,tension:0.2,pointRadius:2,borderWidth:1.5,spanGaps:true,
       pointBackgroundColor:pts.map(v=>v===null?'transparent':v>=85?col:v>=70?CC.amb:CC.red),
-      pointBorderColor:pts.map(v=>v===null?'transparent':v>=85?col:v>=70?CC.amb:CC.red),
-    };
-  });
+      pointBorderColor:pts.map(v=>v===null?'transparent':v>=85?col:v>=70?CC.amb:CC.red)};
+  }).filter(Boolean);
+  if(!ds.length){dx(id);return;}
   dx(id);
-  CH[id]=new Chart(document.getElementById(id),{type:'line',data:{labels:combos,datasets:ds},
+  CH[id]=new Chart(document.getElementById(id),{type:'line',data:{labels:dayLbls,datasets:ds},
     options:{responsive:true,maintainAspectRatio:false,
       plugins:{
         legend:{position:'top',labels:{color:'rgba(255,255,255,.85)',font:{size:9},padding:6}},
         tooltip:{mode:'index',callbacks:{label:ctx=>ctx.raw===null?null:`${ctx.dataset.label}: ${ctx.raw}%`}}},
       scales:{
-        x:{grid:{color:CC.grid},ticks:{color:CC.txt,font:{size:9}}},
-        y:{grid:{color:CC.grid},min:0,max:100,
-          ticks:{color:CC.txt,font:{size:9},callback:v=>v+'%'}}}},
+        x:{grid:{color:CC.grid},ticks:{color:CC.txt,font:{size:9},maxTicksLimit:20,maxRotation:35}},
+        y:{grid:{color:CC.grid},min:0,max:100,ticks:{color:CC.txt,font:{size:9},callback:v=>v+'%'}}}},
     plugins:[{id:'refLine',afterDraw:ch=>{
       const{ctx,chartArea:{left,right},scales:{y}}=ch;
       const yPx=y.getPixelForValue(85);
